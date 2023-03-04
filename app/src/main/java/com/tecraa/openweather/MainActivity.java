@@ -1,15 +1,26 @@
 package com.tecraa.openweather;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Shader;
+import android.location.Location;
+import android.location.LocationManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.karumi.dexter.Dexter;
+import com.karumi.dexter.MultiplePermissionsReport;
+import com.karumi.dexter.PermissionToken;
+import com.karumi.dexter.listener.PermissionRequest;
+import com.karumi.dexter.listener.multi.MultiplePermissionsListener;
 import com.tecraa.openweather.Forecast.ListItem;
 import com.tecraa.openweather.Forecast.ResponseForecast;
 import com.tecraa.openweather.databinding.ActivityMainBinding;
@@ -34,6 +45,9 @@ public class MainActivity extends AppCompatActivity {
 
     ForecastAdapter adapter;
 
+    Location location;
+    double lat,lng;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -49,11 +63,28 @@ public class MainActivity extends AppCompatActivity {
                 Shader.TileMode.CLAMP);
         binding.currentTemperatureTV.getPaint().setShader(shader);
 
+        Dexter.withContext(this)
+                .withPermissions(
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                ).withListener(new MultiplePermissionsListener() {
+                    @Override public void onPermissionsChecked(MultiplePermissionsReport report) {
+
+                        location = getLocation();
 
 
+                        if (location!=null){
+                            lat = location.getLatitude();
+                            lng = location.getLongitude();
+                        }
+                        callCurrentWeather();
+                        calForecastWeather();
 
-       callCurrentWeather();
-       calForecastWeather();
+                    }
+                    @Override public void onPermissionRationaleShouldBeShown(List<PermissionRequest> permissions, PermissionToken token) {/* ... */}
+                }).check();
+
+
 
 
 //       forecastList = new ArrayList<>();
@@ -81,7 +112,8 @@ public class MainActivity extends AppCompatActivity {
         ForecastDTO forecastDTO = RetrofitClient.getRetrofit().create(ForecastDTO.class);
 
 
-        Call<ResponseForecast> forecastCall = forecastDTO.getForecastWeather();
+
+        Call<ResponseForecast> forecastCall = forecastDTO.getForecastWeather(lat,lng,"metric",Constants.API_KEY);
         forecastCall.enqueue(new Callback<ResponseForecast>() {
             @Override
             public void onResponse(Call<ResponseForecast> call, Response<ResponseForecast> response) {
@@ -89,6 +121,7 @@ public class MainActivity extends AppCompatActivity {
 
 
                 forecastList.addAll(response.body().getList());
+                binding.currentCityTV.setText(response.body().getCity().getName());
 
 
 //                if (Build.VERSION.SDK_INT>=Build.VERSION_CODES.N){
@@ -120,14 +153,14 @@ public class MainActivity extends AppCompatActivity {
     private void callCurrentWeather() {
         WeatherDTO dto = RetrofitClient.getRetrofit().create(WeatherDTO.class);
 
-        Call<ResponseWeather> weatherCall = dto.getCurrentWeather();
+        Call<ResponseWeather> weatherCall = dto.getCurrentWeather(lat,lng,"metric",Constants.API_KEY);
 
         weatherCall.enqueue(new Callback<ResponseWeather>() {
             @Override
             public void onResponse(Call<ResponseWeather> call, Response<ResponseWeather> response) {
                 if (response.isSuccessful()){
                     binding.currentTemperatureTV.setText(response.body().getMain().getTemp().toString());
-                    binding.currentCityTV.setText(response.body().getName());
+                    //binding.currentCityTV.setText(response.body().getName());
                     binding.currentWeatherNameTV.setText(response.body().getWeather().get(0).getDescription());
                     Date date = new Date(System.currentTimeMillis());
                     DateFormat dateFormat = new SimpleDateFormat("EEEE, DD MMM");
@@ -145,19 +178,19 @@ public class MainActivity extends AppCompatActivity {
                         binding.weatherIconIV.setImageResource(R.drawable.img_ic_sun_rain);
                     }else if (iconSrt.equals("10n")){
                         binding.weatherIconIV.setImageResource(R.drawable.img_ic_moon_rain);
-                    }else if (iconSrt.equals("9n")||iconSrt.equals("9d")){
+                    }else if (iconSrt.equals("09n")||iconSrt.equals("09d")){
                         binding.weatherIconIV.setImageResource(R.drawable.img_ic_shower_rain);
-                    }else if (iconSrt.equals("4n")||iconSrt.equals("4d")){
+                    }else if (iconSrt.equals("04n")||iconSrt.equals("04d")){
                         binding.weatherIconIV.setImageResource(R.drawable.img_ic_broken_clouds);
-                    }else if (iconSrt.equals("3n")||iconSrt.equals("3d")){
+                    }else if (iconSrt.equals("03n")||iconSrt.equals("03d")){
                         binding.weatherIconIV.setImageResource(R.drawable.img_ic_clouds);
-                    }else if (iconSrt.equals("2d")){
+                    }else if (iconSrt.equals("02d")){
                         binding.weatherIconIV.setImageResource(R.drawable.img_ic_cloud_sun);
-                    }else if (iconSrt.equals("2n")){
+                    }else if (iconSrt.equals("02n")){
                         binding.weatherIconIV.setImageResource(R.drawable.img_ic_cloud_moon);
-                    }else if (iconSrt.equals("1d")){
+                    }else if (iconSrt.equals("01d")){
                         binding.weatherIconIV.setImageResource(R.drawable.img_ic_sun);
-                    }else if (iconSrt.equals("1n")){
+                    }else if (iconSrt.equals("01n")){
                         binding.weatherIconIV.setImageResource(R.drawable.img_ic_moon);
                     }else {
                         binding.weatherIconIV.setImageResource(R.drawable.img_ic_clouds);
@@ -173,5 +206,30 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+    }
+    public Location getLocation(){
+        Location location =null;
+        Location bestLocation = null;
+
+        LocationManager locationManager = (LocationManager) this.getSystemService(LOCATION_SERVICE);
+
+        List<String>provider = locationManager.getProviders(true);
+        for (String p: provider){
+            if (ActivityCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION)!= PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED){
+                return null;
+            }
+            location = locationManager.getLastKnownLocation(p);
+
+            if (location==null){
+                continue;
+            }
+            if (bestLocation==null||location.getAccuracy()>bestLocation.getAccuracy()){
+                bestLocation = location;
+            }
+
+        }
+
+
+        return bestLocation;
     }
 }
